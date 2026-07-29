@@ -9,9 +9,13 @@ import (
 	"syscall"
 	"time"
 	"io"
+	"fmt"
+	"bufio"
 
 	"boot.dev/linko/internal/store"
 )
+
+type closeFunc func() error
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -26,7 +30,16 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
-	logger := initLogger()
+	logger, closeLogger, err := initLogger(os.Getenv("LINKO_LOG_FILE"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %w\n", err)
+		return 1
+	}
+	defer func() {
+		if err := closeLogger(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to flush buffer or close log file: %w\n", err)
+		}
+	}()
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
@@ -55,15 +68,24 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	return 0
 }
 
-func initLogger() *log.Logger {
-	logPath := os.Getenv("LINKO_LOG_FILE")
-	if logPath != "" {
-		f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+func initLogger(logFile string) (*log.Logger, closeFunc, error) {
+	if logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err != nil {
-			log.Fatalf("failed to open log file: %v", err)
+			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
 		}
-		multiWriter := io.MultiWriter(os.Stderr, f)
-		return log.New(multiWriter, "", log.LstdFlags)
+		bufferedFile := bufio.NewWriterSize(f, 8192)
+		multiWriter := io.MultiWriter(os.Stderr, bufferedFile)
+		cFn := func() error {
+			if err := bufferedFile.Flush(); err != nil {
+				return fmt.Errorf("failed to flush log file: %w", err)
+			}
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("failed to close log file: %w", err)
+			}
+			return nil
+		}
+		return log.New(multiWriter, "", log.LstdFlags), cFn, nil
 	}
-	return log.New(os.Stderr, "", log.LstdFlags)
+	return log.New(os.Stderr, "", log.LstdFlags), func() error { return nil }, nil
 }
