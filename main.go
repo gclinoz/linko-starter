@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -43,7 +43,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
-		logger.Printf("failed to create store: %v", err)
+		logger.Info(fmt.Sprintf("failed to create store: %v", err))
 		return 1
 	}
 	s := newServer(*st, httpPort, cancel, logger)
@@ -56,19 +56,19 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	logger.Println("Linko is shutting down")
+	logger.Info("Linko is shutting down")
 	if err := s.shutdown(shutdownCtx); err != nil {
-		logger.Printf("failed to shutdown server: %v", err)
+		logger.Info(fmt.Sprintf("failed to shutdown server: %v", err))
 		return 1
 	}
 	if serverErr != nil {
-		logger.Printf("server error: %v", serverErr)
+		logger.Info(fmt.Sprintf("server error: %v", serverErr))
 		return 1
 	}
 	return 0
 }
 
-func initLogger(logFile string) (*log.Logger, closeFunc, error) {
+func initLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	if logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 		if err != nil {
@@ -85,7 +85,7 @@ func initLogger(logFile string) (*log.Logger, closeFunc, error) {
 			}
 			return nil
 		}
-		return log.New(multiWriter, "", log.LstdFlags), cFn, nil
+		return slog.New(slog.NewTextHandler(multiWriter, nil)), cFn, nil
 	}
-	return log.New(os.Stderr, "", log.LstdFlags), func() error { return nil }, nil
+	return slog.New(slog.NewTextHandler(os.Stderr, nil)), func() error { return nil }, nil
 }
