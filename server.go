@@ -51,7 +51,7 @@ func (s *server) start() error {
 		return err
 	}
 	addrTCP := ln.Addr().(*net.TCPAddr)
-	s.logger.Info(fmt.Sprintf("Linko is running on http://localhost:%d", addrTCP.Port))
+	s.logger.Debug(fmt.Sprintf("Linko is running on http://localhost:%d", addrTCP.Port))
 
 	if err := s.httpServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 		return err
