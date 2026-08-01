@@ -34,12 +34,12 @@ func main() {
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
 	logger, closeLogger, err := initLogger(os.Getenv("LINKO_LOG_FILE"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %w\n", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
 		return 1
 	}
 	defer func() {
 		if err := closeLogger(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to flush buffer or close log file: %w\n", err)
+			fmt.Fprintf(os.Stderr, "failed to flush buffer or close log file: %v\n", err)
 		}
 	}()
 
