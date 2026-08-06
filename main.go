@@ -14,6 +14,7 @@ import (
 
 	"boot.dev/linko/internal/store"
 	"boot.dev/linko/internal/linkoerr"
+	"boot.dev/linko/internal/build"
 	pkgerr "github.com/pkg/errors"
 )
 
@@ -54,6 +55,11 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 			fmt.Fprintf(os.Stderr, "failed to flush buffer or close log file: %v\n", err)
 		}
 	}()
+
+	logger = logger.With(
+		slog.String("git_sha", build.GitSHA),
+		slog.String("build_time", build.BuildTime),
+	)
 
 	st, err := store.New(dataDir, logger)
 	if err != nil {
@@ -145,7 +151,6 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 			return slog.GroupAttrs("errors", errAt...)
 		}
 		return slog.GroupAttrs("error", errorAttrs(err)...)
-
 	}
 	return a
 }

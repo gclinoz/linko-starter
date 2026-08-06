@@ -76,6 +76,7 @@ func (s *Store) List(ctx context.Context) ([]ShortURL, error) {
 	for e := range ch {
 		if e.Err != nil {
 			errs = append(errs, e.Err)
+			continue
 		}
 		urls = append(urls, e)
 		if len(urls) >= maxURLs {
