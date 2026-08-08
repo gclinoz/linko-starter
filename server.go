@@ -10,11 +10,15 @@ import (
 	"log/slog"
 	"time"
 	"io"
+	"crypto/rand"
 
 	"boot.dev/linko/internal/store"
 )
 
-const logContextKey contextKey = "log_context"
+const (
+	logContextKey contextKey = "log_context"
+	requestIDHeaderKey = "X-Request-ID"
+)
 
 type LogContext struct {
 	Username string
@@ -40,7 +44,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(logger)(mux),
+		Handler: requestIDMiddleware(requestLogger(logger)(mux)),
 	}
 
 	s := &server{
@@ -90,7 +94,7 @@ func (s *server) handlerShutdown(w http.ResponseWriter, r *http.Request) {
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r * http.Request) {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
 			spyReader := &spyReadCloser{ReadCloser: r.Body}
@@ -112,6 +116,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
 				slog.Int("response_body_bytes", spyWriter.bytesWritten),
+				slog.String("request_id", spyWriter.Header().Get(requestIDHeaderKey)),
 			}
 			if logCtx.Username != "" {
 				attrs = append(attrs, slog.String("user", logCtx.Username))
@@ -154,3 +159,15 @@ func (w *spyResponseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
 }
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get(requestIDHeaderKey)
+		if reqID == "" {
+			reqID = rand.Text()
+		}
+		w.Header().Set(requestIDHeaderKey, reqID)
+		next.ServeHTTP(w, r)
+	})
+}
+
