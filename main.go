@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 	"fmt"
-	"bufio"
 	"errors"
 
 	"boot.dev/linko/internal/store"
@@ -19,6 +18,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 const bufferSize = 8192
@@ -107,24 +107,23 @@ func initLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	closers := []closeFunc{}
 
 	if logFile != "" {
-		f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open log file: %w", err)
+		logger := &lumberjack.Logger{
+			Filename:   logFile,
+			MaxSize:    1,
+			MaxAge:     28,
+			MaxBackups: 10,
+			LocalTime:  false,
+			Compress:   true,
 		}
-		bufferedFile := bufio.NewWriterSize(f, bufferSize)
-
 		cFn := func() error {
-			if err := bufferedFile.Flush(); err != nil {
-				return fmt.Errorf("failed to flush log file: %w", err)
-			}
-			if err := f.Close(); err != nil {
-				return fmt.Errorf("failed to close log file: %w", err)
+			if err := logger.Close(); err != nil {
+				return fmt.Errorf("failed to close lumberjack logger: %w", err)
 			}
 			return nil
 		}
 
 		handlers = append(handlers,
-			slog.NewJSONHandler(bufferedFile, &slog.HandlerOptions{
+			slog.NewJSONHandler(logger, &slog.HandlerOptions{
 				Level: slog.LevelInfo,
 				ReplaceAttr: replaceAttr,
 			}),
