@@ -10,6 +10,8 @@ import (
 	"time"
 	"fmt"
 	"errors"
+	"slices"
+	"net/url"
 
 	"boot.dev/linko/internal/store"
 	"boot.dev/linko/internal/linkoerr"
@@ -143,7 +145,20 @@ func initLogger(logFile string) (*slog.Logger, closeFunc, error) {
 	return slog.New(slog.NewMultiHandler(handlers...)), closerAll, nil
 }
 
+var sensitiveKeys = []string{"password", "key", "apikey", "secret", "pin", "creditcardno", "user"}
+
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if slices.Contains(sensitiveKeys, a.Key) {
+		return slog.String(a.Key, "[REDACTED]")
+	}
+	if a.Value.Kind() == slog.KindString {
+		if parsedURL, err := url.Parse(a.Value.String()); err == nil{
+			if _, exist := parsedURL.User.Password(); exist {
+				parsedURL.User = url.UserPassword(parsedURL.User.Username(), "[REDACTED]")
+				return slog.String(a.Key, parsedURL.String())
+			}
+		}
+	}
 	if a.Key == "error" {
 		err, ok := a.Value.Any().(error)
 		if !ok {
