@@ -4,4 +4,5 @@ linko
 vendor/
 *.log
 *.log.gz
-cpu.p*
+cpu.*
+*pprof*
