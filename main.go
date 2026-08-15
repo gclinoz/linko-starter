@@ -21,6 +21,10 @@ import (
 	"github.com/mattn/go-isatty"
 	pkgerr "github.com/pkg/errors"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const bufferSize = 8192
@@ -50,6 +54,16 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
+	closeTracer, err := initTracing(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize tracer: %v\n", err)
+	}
+	defer func() {
+		if err := closeTracer(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close tracer: %v\n", err)
+		}
+	}()
+
 	logger, closeLogger, err := initLogger(os.Getenv("LINKO_LOG_FILE"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
@@ -57,7 +71,7 @@ func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir s
 	}
 	defer func() {
 		if err := closeLogger(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to flush buffer or close log file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "failed to close lumberjack logger: %v\n", err)
 		}
 	}()
 
@@ -193,4 +207,21 @@ func errorAttrs(err error) []slog.Attr {
 		})
 	}
 	return attrs
+}
+
+func initTracing(ctx context.Context) (func(context.Context) error, error) {
+	exp, err := otlptracegrpc.New(ctx)
+	if err != nil {
+		return nil ,err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp,
+			sdktrace.WithBatchTimeout(2 * time.Second),
+		),
+		sdktrace.WithResource(resource.Default()),
+	)
+
+	otel.SetTracerProvider(tp)
+	return tp.Shutdown, nil
 }
